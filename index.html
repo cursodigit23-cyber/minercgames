@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Crypto Rig Cloud | Personal Miner & Lemon USDT</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SDK oficial de Supabase por CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --usdt-emerald: #10b981;
+      --neon-cyan: #22d3ee;
+      --gold-accent: #fbbf24;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #060a12;
+      background-image:
+        radial-gradient(circle at 12% 10%, rgba(16, 185, 129, 0.10) 0%, transparent 42%),
+        radial-gradient(circle at 88% 85%, rgba(34, 211, 238, 0.08) 0%, transparent 42%);
+      color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+      overflow-x: hidden;
+    }
+
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Núcleo de ciclo de minado */
+    .cycle-core {
+      background: radial-gradient(circle at 30% 25%, #162238, #0b1220 75%);
+      transition: transform 0.18s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+
+    .cycle-core.state-idle {
+      border: 2px solid rgba(34, 211, 238, 0.45);
+      box-shadow: 0 0 38px rgba(34, 211, 238, 0.18), inset 0 0 24px rgba(34, 211, 238, 0.10);
+    }
+
+    .cycle-core.state-idle:hover {
+      transform: scale(1.02);
+      border-color: rgba(34, 211, 238, 0.85);
+      box-shadow: 0 0 48px rgba(34, 211, 238, 0.32), inset 0 0 28px rgba(34, 211, 238, 0.18);
+    }
+
+    .cycle-core.state-mining {
+      border: 2px solid rgba(16, 185, 129, 0.55);
+      box-shadow: 0 0 45px rgba(16, 185, 129, 0.22), inset 0 0 28px rgba(16, 185, 129, 0.12);
+    }
+
+    @keyframes claimGlow {
+      0%, 100% {
+        box-shadow: 0 0 30px rgba(251, 191, 36, 0.38), inset 0 0 20px rgba(251, 191, 36, 0.20);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 56px rgba(251, 191, 36, 0.68), inset 0 0 32px rgba(251, 191, 36, 0.32);
+        transform: scale(1.03);
+      }
+    }
+
+    .cycle-core.state-claimable {
+      border: 2px solid rgba(251, 191, 36, 0.9);
+      animation: claimGlow 1.8s ease-in-out infinite;
+    }
+
+    @keyframes orbitSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .orbit-active {
+      animation: orbitSpin 12s linear infinite;
+    }
+
+    /* Scrollbar discreta */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090e1a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Barra Superior -->
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-slate-950/85 border-b border-slate-800/80">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- Identidad -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 via-teal-400 to-cyan-400 flex items-center justify-center text-slate-950 font-extrabold shadow-lg shadow-emerald-500/20">
+          ₮
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-sm sm:text-base tracking-tight text-white">Crypto Rig Cloud</h1>
+            <span id="connectionModeBadge" class="text-[10px] font-mono-tech uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              Modo Local
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400 leading-none">Personal Miner • Ciclos 1h / 2h / 8h • Lemon USDT</p>
+        </div>
+      </div>
+
+      <!-- Controles de Cuenta & SQL -->
+      <div class="flex items-center gap-2">
+        <!-- Botón Guía SQL Supabase -->
+        <button id="openSqlModalBtn" type="button"
+          class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-cyan-300 text-xs font-semibold transition flex items-center gap-1.5">
+          <span>🗄️</span>
+          <span class="hidden sm:inline">Configurar Supabase</span>
+          <span class="sm:hidden">SQL</span>
+        </button>
+
+        <!-- Zona de Sesión Google (No autenticado) -->
+        <button id="googleLoginBtn" type="button"
+          class="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 active:scale-95 text-slate-900 text-xs font-bold shadow-md transition flex items-center gap-2">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"/>
+            <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"/>
+          </svg>
+          <span>Iniciar sesión con Google</span>
+        </button>
+
+        <!-- Zona de Sesión Google (Autenticado) -->
+        <div id="userProfileBox" class="hidden items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5">
+          <img id="userAvatarImg" src="https://placehold.co/32x32/0f172a/22d3ee?text=U" alt="Avatar"
+            onerror="this.src='https://placehold.co/32x32/0f172a/22d3ee?text=U'"
+            class="w-6 h-6 rounded-full border border-emerald-400/50 object-cover" />
+          <span id="userEmailText" class="hidden md:inline text-xs font-medium text-slate-200 max-w-[150px] truncate">
+            usuario@gmail.com
+          </span>
+          <button id="logoutBtn" type="button"
+            class="text-[11px] font-semibold text-rose-300 hover:text-rose-200 px-2 py-1 rounded-lg bg-rose-950/50 border border-rose-800/40 transition">
+            Salir
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Banner informativo si Supabase aún no está configurado -->
+  <div id="demoModeBanner" class="bg-amber-500/10 border-b border-amber-500/25 px-4 py-2 text-xs text-amber-200">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="flex items-center gap-2 text-center sm:text-left">
+        <span>⚡</span>
+        <span>
+          <strong>Modo Prueba Local activo:</strong> Pegá tu <code class="font-mono-tech bg-slate-900 px-1.5 py-0.5 rounded text-amber-300">SUPABASE_URL</code> y <code class="font-mono-tech bg-slate-900 px-1.5 py-0.5 rounded text-amber-300">SUPABASE_ANON_KEY</code> al inicio del <code class="font-mono-tech">&lt;script&gt;</code> para sincronizar con Google entre celular y PC.
+        </span>
+      </div>
+      <button id="bannerOpenSqlBtn" type="button"
+        class="shrink-0 px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-200 font-semibold transition">
+        Ver SQL de tablas
+      </button>
+    </div>
+  </div>
+
+  <!-- Contenedor de Notificaciones Toast -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Contenido Principal -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-5 flex flex-col gap-5">
+
+    <!-- Tarjetas de Resumen de Balance y Rendimiento -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <!-- Saldo USDT -->
+      <div class="col-span-2 lg:col-span-1 rounded-2xl bg-slate-900/85 border border-emerald-500/35 p-4 shadow-lg shadow-emerald-950/20">
+        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <span>Saldo Disponible</span>
+          <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-mono-tech font-bold text-[10px]">USDT</span>
+        </div>
+        <div id="statUsdtBalance" class="font-mono-tech text-2xl sm:text-3xl font-extrabold text-emerald-300 truncate">
+          0.0000 USDT
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+          <span>≈ <span id="statSatsEquiv" class="text-amber-300 font-mono-tech">0</span> SATS est.</span>
+          <span id="syncStatusLabel" class="text-[10px] text-slate-500">Local</span>
+        </div>
+      </div>
+
+      <!-- Rendimiento Base por Hora -->
+      <div class="rounded-2xl bg-slate-900/80 border border-slate-800 p-4">
+        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <span>Tasa del Rig</span>
+          <span class="text-cyan-400">⚡</span>
+        </div>
+        <div id="statHourlyRate" class="font-mono-tech text-lg sm:text-2xl font-bold text-cyan-300 truncate">
+          0.0500 /h
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1">
+          Hashrate: <span id="statHashrate" class="text-slate-200 font-mono-tech">10.0 TH/s</span>
+        </div>
+      </div>
+
+      <!-- Estado del Ciclo Actual -->
+      <div class="rounded-2xl bg-slate-900/80 border border-slate-800 p-4">
+        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <span>Ciclo Activo</span>
+          <span id="statCycleBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300">
+            Inactivo
+          </span>
+        </div>
+        <div id="statCycleReward" class="font-mono-tech text-lg sm:text-2xl font-bold text-amber-300 truncate">
+          +0.0500 USDT
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1 truncate">
+          Bonus duración: <span id="statCycleBonusLabel" class="text-emerald-400 font-mono-tech">+0%</span>
+        </div>
+      </div>
+
+      <!-- Total Minado Histórico -->
+      <div class="rounded-2xl bg-slate-900/80 border border-slate-800 p-4">
+        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+          <span>Total Generado</span>
+          <span class="text-amber-400">🏆</span>
+        </div>
+        <div id="statTotalMined" class="font-mono-tech text-lg sm:text-2xl font-bold text-white truncate">
+          0.0000 USDT
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1">
+          Ciclos completados: <span id="statCompletedCycles" class="text-slate-200 font-mono-tech">0</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Grid Principal: Izquierda (Ciclo Temporizado 1h/2h/8h) | Derecha (Mejoras & Retiro Lemon) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+      <!-- COLUMNA IZQUIERDA: CONTROL DE CICLOS DE MINADO -->
+      <section class="lg:col-span-5 rounded-3xl bg-slate-900/75 border border-slate-800/90 p-5 sm:p-6 flex flex-col items-center">
+        <!-- Encabezado del Nodo -->
+        <div class="w-full flex items-center justify-between text-xs text-slate-400 mb-4">
+          <div class="flex items-center gap-2">
+            <span id="nodePulseDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+            <span id="nodeStatusText" class="font-mono-tech text-slate-300">NODO EN ESPERA</span>
+          </div>
+          <span class="font-mono-tech text-[11px] text-emerald-400">ANTI-BOT TIMER</span>
+        </div>
+
+        <!-- Selector de Duración del Ciclo (1h, 2h, 8h) -->
+        <div class="w-full mb-4">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-2 text-center">
+            Seleccioná la duración del ciclo
+          </div>
+          <div id="durationSelector" class="grid grid-cols-3 gap-2">
+            <button type="button" data-hours="1"
+              class="duration-option-btn rounded-2xl p-2.5 border text-center transition bg-cyan-500/15 border-cyan-400 text-white">
+              <div class="font-mono-tech font-extrabold text-sm">1 Hora</div>
+              <div class="text-[10px] text-cyan-300 font-mono-tech mt-0.5">Base (x1.00)</div>
+            </button>
+
+            <button type="button" data-hours="2"
+              class="duration-option-btn rounded-2xl p-2.5 border text-center transition bg-slate-950/80 border-slate-800 text-slate-400 hover:border-slate-700">
+              <div class="font-mono-tech font-extrabold text-sm">2 Horas</div>
+              <div class="text-[10px] text-emerald-400 font-mono-tech mt-0.5">+10% Bonus</div>
+            </button>
+
+            <button type="button" data-hours="8"
+              class="duration-option-btn rounded-2xl p-2.5 border text-center transition bg-slate-950/80 border-slate-800 text-slate-400 hover:border-slate-700">
+              <div class="font-mono-tech font-extrabold text-sm">8 Horas</div>
+              <div class="text-[10px] text-amber-300 font-mono-tech mt-0.5">+25% Noche</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Núcleo Visual / Botón Único de Acción -->
+        <div class="relative my-3 flex items-center justify-center">
+          <div id="orbitRing" class="absolute w-56 h-56 sm:w-64 sm:h-64 rounded-full border border-dashed border-cyan-500/30 pointer-events-none"></div>
+
+          <!-- Progreso circular SVG -->
+          <svg class="absolute w-52 h-52 sm:w-60 sm:h-60 -rotate-90 pointer-events-none" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="54" stroke="#0f172a" stroke-width="5" fill="none" />
+            <circle id="cycleProgressRing" cx="60" cy="60" r="54" stroke="#10b981" stroke-width="5"
+              stroke-linecap="round" fill="none" stroke-dasharray="339.292" stroke-dashoffset="339.292"
+              class="transition-all duration-300" />
+          </svg>
+
+          <button id="mainCycleBtn" type="button"
+            class="cycle-core state-idle relative w-44 h-44 sm:w-52 sm:h-52 rounded-full flex flex-col items-center justify-center p-4 text-center focus:outline-none">
+            <div id="coreIcon" class="text-3xl sm:text-4xl mb-1.5">⚡</div>
+            <div id="corePrimaryText" class="font-extrabold text-xs sm:text-sm tracking-wide text-white leading-tight uppercase">
+              INICIAR CICLO DE MINADO
+            </div>
+            <div id="coreTimerText" class="font-mono-tech text-lg sm:text-xl font-extrabold text-cyan-300 mt-1">
+              01:00:00
+            </div>
+            <div id="coreSubText" class="font-mono-tech text-[11px] text-emerald-400 mt-0.5">
+              Est. +0.0500 USDT
+            </div>
+          </button>
+        </div>
+
+        <!-- Barra Lineal Complementaria y Timestamp real -->
+        <div class="w-full mt-3">
+          <div class="flex justify-between text-[11px] text-slate-400 mb-1.5 font-mono-tech">
+            <span id="cycleProgressLabel">Listo para iniciar</span>
+            <span id="cyclePercentText">0.0%</span>
+          </div>
+          <div class="w-full h-2.5 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+            <div id="cycleLinearBar" class="h-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-amber-300 transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <p id="timestampInfoText" class="text-[11px] text-center text-slate-400 mt-3 leading-relaxed">
+            Basado en reloj real: podés cerrar el navegador o cambiar entre celular y PC sin perder el avance del ciclo.
+          </p>
+        </div>
+      </section>
+
+      <!-- COLUMNA DERECHA: MEJORAS DE RIG & RETIRO A LEMON -->
+      <section class="lg:col-span-7 rounded-3xl bg-slate-900/75 border border-slate-800/90 p-4 sm:p-6 flex flex-col">
+        <!-- Navegación por Pestañas -->
+        <div class="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-950/90 border border-slate-800 mb-4">
+          <button id="tabRigBtn" type="button"
+            class="py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+            <span>⚙️</span>
+            <span>Mejoras de Rig</span>
+          </button>
+          <button id="tabLemonBtn" type="button"
+            class="py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent">
+            <span>🍋</span>
+            <span>Retirar a Lemon (USDT)</span>
+          </button>
+        </div>
+
+        <!-- PESTAÑA 1: MEJORAS DE RIG (RENDIMIENTO POR HORA) -->
+        <div id="panelRig" class="flex flex-col gap-3">
+          <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+            <span>Aumentá la producción USDT/hora de tus ciclos de 1h, 2h y 8h</span>
+            <span class="font-mono-tech text-emerald-400 font-semibold">100% Pasivo</span>
+          </div>
+
+          <div id="rigUpgradesContainer" class="flex flex-col gap-2.5"></div>
+        </div>
+
+        <!-- PESTAÑA 2: FORMULARIO DE RETIRO A LEMON (USDT) -->
+        <div id="panelLemon" class="hidden flex-col gap-4">
+          <!-- Guía rápida de red recomendada para Lemon -->
+          <div class="rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-3.5 text-xs text-emerald-100 flex items-start gap-2.5">
+            <span class="text-base">🍋</span>
+            <div>
+              <p class="font-semibold text-emerald-300">Recepción directa en Lemon Cash (USDT)</p>
+              <p class="text-slate-300 mt-0.5">
+                En tu app de Lemon entrá a <strong>Depositar → USDT</strong> y elegí preferentemente <strong>Optimism</strong> o <strong>Polygon</strong> (comisión mínima ~$0.01–$0.02). Evitá TRC20 salvo que sea necesario por su comisión (~$1.00).
+              </p>
+            </div>
+          </div>
+
+          <!-- Formulario de Retiro -->
+          <form id="lemonWithdrawForm" class="rounded-2xl bg-slate-950/75 border border-slate-800 p-4 flex flex-col gap-3.5">
+            <!-- Selector de Red -->
+            <div>
+              <label for="networkSelect" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                Red de envío compatible con Lemon
+              </label>
+              <select id="networkSelect"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs sm:text-sm text-white font-mono-tech focus:outline-none focus:border-emerald-400">
+                <option value="OPTIMISM">Optimism (OP Mainnet — Comisión est. ~$0.02) • Recomendada</option>
+                <option value="POLYGON">Polygon (POS — Comisión est. ~$0.01) • Muy económica</option>
+                <option value="BEP20">BEP20 (BNB Smart Chain — Comisión est. ~$0.05)</option>
+                <option value="TRC20">TRC20 (Tron — Comisión est. ~$1.00)</option>
+              </select>
+              <div id="networkHintText" class="text-[11px] text-cyan-300 mt-1 font-mono-tech">
+                Formato esperado: dirección EVM que empieza con 0x... (42 caracteres)
+              </div>
+            </div>
+
+            <!-- Dirección de Billetera Lemon + Guardado Predeterminado -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label for="lemonAddressInput" class="text-xs font-semibold text-slate-300">
+                  Tu dirección USDT de Lemon
+                </label>
+                <button id="saveDefaultWalletBtn" type="button"
+                  class="text-[11px] font-semibold text-cyan-300 hover:text-cyan-200 underline">
+                  Guardar como predeterminada
+                </button>
+              </div>
+              <input id="lemonAddressInput" type="text" placeholder="0x71C...89A"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs sm:text-sm text-white placeholder-slate-500 font-mono-tech focus:outline-none focus:border-emerald-400" />
+            </div>
+
+            <!-- Monto a retirar -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label for="withdrawUsdtInput" class="text-xs font-semibold text-slate-300">
+                    Monto a retirar (USDT)
+                  </label>
+                  <span class="text-[11px] font-mono-tech text-slate-400">Mín: 1.0000 USDT</span>
+                </div>
+                <div class="flex gap-1.5">
+                  <input id="withdrawUsdtInput" type="number" step="0.0001" min="1" placeholder="1.0000"
+                    class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 font-mono-tech focus:outline-none focus:border-emerald-400" />
+                  <button id="maxUsdtBtn" type="button"
+                    class="px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-300 border border-slate-700">
+                    MAX
+                  </button>
+                </div>
+              </div>
+
+              <button id="submitLemonWithdrawBtn" type="submit"
+                class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-extrabold text-sm shadow-lg shadow-emerald-500/20 active:scale-95 transition">
+                Solicitar Retiro USDT
+              </button>
+            </div>
+          </form>
+
+          <!-- Historial de Solicitudes de Retiro -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Historial de Retiros a Lemon</h3>
+              <span id="withdrawHistoryCount" class="text-[11px] font-mono-tech text-slate-500">0 registros</span>
+            </div>
+            <div id="lemonHistoryList" class="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1">
+              <div class="text-xs text-slate-500 text-center py-4 rounded-xl bg-slate-950/50 border border-slate-800/70">
+                Aún no tenés solicitudes de retiro registradas.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- MODAL: GUÍA SQL PARA CONFIGURAR SUPABASE -->
+  <div id="sqlModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl rounded-3xl bg-slate-900 border border-slate-700 p-5 sm:p-6 shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <span class="text-[10px] font-mono-tech uppercase px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+            Backend Cloud • PostgreSQL + RLS
+          </span>
+          <h2 class="text-lg font-extrabold text-white mt-1">Configurar Tablas en Supabase (10 segundos)</h2>
+        </div>
+        <button id="closeSqlModalBtn" type="button"
+          class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">
+          ✕
+        </button>
+      </div>
+
+      <ol class="text-xs text-slate-300 space-y-1.5 mb-3 list-decimal list-inside">
+        <li>Entrá a tu proyecto en <strong>Supabase → SQL Editor → New query</strong>.</li>
+        <li>Pegá el siguiente código y presioná <strong>Run</strong> para crear <code class="font-mono-tech text-cyan-300">miner_profiles</code> y <code class="font-mono-tech text-cyan-300">withdrawals</code> con seguridad por usuario.</li>
+        <li>Activá <strong>Authentication → Providers → Google</strong> y pegá tu <code class="font-mono-tech text-emerald-300">SUPABASE_URL</code> y <code class="font-mono-tech text-emerald-300">SUPABASE_ANON_KEY</code> al inicio del <code class="font-mono-tech">&lt;script&gt;</code> de este archivo.</li>
+      </ol>
+
+      <div class="relative flex-1 min-h-0 rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden flex flex-col">
+        <div class="flex items-center justify-between px-3.5 py-2 bg-slate-900/90 border-b border-slate-800">
+          <span class="font-mono-tech text-[11px] text-slate-400">schema_supabase.sql</span>
+          <button id="copySqlBtn" type="button"
+            class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition">
+            Copiar SQL
+          </button>
+        </div>
+        <pre id="sqlCodeBlock" class="p-3.5 text-[11px] sm:text-xs font-mono-tech text-cyan-200 overflow-auto leading-relaxed select-all">-- 1. Tabla de perfil y estado del ciclo de minado por usuario
+create table if not exists public.miner_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  usdt_balance numeric(18, 6) not null default 0,
+  total_mined numeric(18, 6) not null default 0,
+  completed_cycles integer not null default 0,
+  cycle_start_time timestamptz,
+  cycle_duration_hours integer not null default 1,
+  upgrades jsonb not null default '{"optimism_node":0,"antminer_s21":0,"immersion_cooling":0,"direct_usdt_pool":0}'::jsonb,
+  default_network text not null default 'OPTIMISM',
+  default_wallet text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+-- 2. Tabla de historial de retiros hacia Lemon
+create table if not exists public.withdrawals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  network text not null,
+  wallet_address text not null,
+  amount_usdt numeric(18, 6) not null,
+  status text not null default 'Pendiente de envío',
+  created_at timestamptz not null default now()
+);
+
+-- 3. Habilitar Row Level Security (RLS) para proteger tus datos
+alter table public.miner_profiles enable row level security;
+alter table public.withdrawals enable row level security;
+
+create policy "Usuario gestiona su propio perfil"
+  on public.miner_profiles for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Usuario gestiona sus propios retiros"
+  on public.withdrawals for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // =========================================================================
+      // 1. CREDENCIALES DE SUPABASE (EDITÁ ESTAS DOS LÍNEAS CON TUS CLAVES)
+      // =========================================================================
+      const SUPABASE_URL = 'TU_SUPABASE_URL';
+      const SUPABASE_ANON_KEY = 'TU_SUPABASE_ANON_KEY';
+
+      // =========================================================================
+      // 2. CONSTANTES DEL SIMULADOR & CATÁLOGO DE MEJORAS DE RIG
+      // =========================================================================
+      const LOCAL_STORAGE_KEY = 'crypto_rig_cloud_local_v1';
+      const BASE_USDT_PER_HOUR = 0.0500; // Producción base inicial por hora
+      const USDT_TO_SATS_ESTIMATE = 1050; // Equivalencia visual estimada (1 USDT ≈ 1050 SATS)
+      const MIN_WITHDRAW_USDT = 1.0000;
+
+      const DURATION_CONFIG = {
+        1: { label: '1 Hora', bonusMultiplier: 1.00, bonusText: '+0% (Base)' },
+        2: { label: '2 Horas', bonusMultiplier: 1.10, bonusText: '+10% Bonus' },
+        8: { label: '8 Horas', bonusMultiplier: 1.25, bonusText: '+25% Modo Noche' }
+      };
+
+      const NETWORK_CONFIG = {
+        OPTIMISM: {
+          name: 'Optimism (OP)',
+          fee: '~$0.02',
+          hint: 'Formato esperado: dirección EVM que empieza con 0x... (42 caracteres)',
+          regex: /^0x[a-fA-F0-9]{40}$/
+        },
+        POLYGON: {
+          name: 'Polygon (POS)',
+          fee: '~$0.01',
+          hint: 'Formato esperado: dirección EVM que empieza con 0x... (42 caracteres)',
+          regex: /^0x[a-fA-F0-9]{40}$/
+        },
+        BEP20: {
+          name: 'BEP20 (BNB Chain)',
+          fee: '~$0.05',
+          hint: 'Formato esperado: dirección EVM que empieza con 0x... (42 caracteres)',
+          regex: /^0x[a-fA-F0-9]{40}$/
+        },
+        TRC20: {
+          name: 'TRC20 (Tron)',
+          fee: '~$1.00',
+          hint: 'Formato esperado: dirección Tron que empieza con T... (34 caracteres)',
+          regex: /^T[1-9A-HJ-NP-Za-km-z]{33}$/
+        }
+      };
+
+      const RIG_UPGRADES = [
+        {
+          id: 'optimism_node',
+          name: 'Nodo Optimism L2',
+          icon: '🔴',
+          baseCost: 0.15,
+          costFactor: 1.45,
+          hourlyBoost: 0.025,
+          hashrateBoost: 15,
+          description: 'Validador ligero de baja latencia (+0.0250 USDT/h).'
+        },
+        {
+          id: 'antminer_s21',
+          name: 'ASIC Antminer S21',
+          icon: '🖥️',
+          baseCost: 0.60,
+          costFactor: 1.50,
+          hourlyBoost: 0.110,
+          hashrateBoost: 85,
+          description: 'Equipo dedicado SHA-256 de alta eficiencia (+0.1100 USDT/h).'
+        },
+        {
+          id: 'immersion_cooling',
+          name: 'Refrigeración Inmersión',
+          icon: '❄️',
+          baseCost: 1.80,
+          costFactor: 1.55,
+          hourlyBoost: 0.350,
+          hashrateBoost: 240,
+          description: 'Tanque dieléctrico que sostiene overclock continuo (+0.3500 USDT/h).'
+        },
+        {
+          id: 'direct_usdt_pool',
+          name: 'Pool Directo USDT',
+          icon: '💎',
+          baseCost: 5.00,
+          costFactor: 1.62,
+          hourlyBoost: 1.050,
+          hashrateBoost: 750,
+          description: 'Liquidación automática sin spread de conversión (+1.0500 USDT/h).'
+        }
+      ];
+
+      // =========================================================================
+      // 3. INICIALIZACIÓN DE CLIENTE SUPABASE (O MODO DEMO LOCAL)
+      // =========================================================================
+      const isSupabaseConfigured =
+        SUPABASE_URL !== 'TU_SUPABASE_URL' &&
+        SUPABASE_ANON_KEY !== 'TU_SUPABASE_ANON_KEY' &&
+        SUPABASE_URL.startsWith('http');
+
+      let supabaseClient = null;
+      if (isSupabaseConfigured && window.supabase) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+
+      let currentUser = null;
+      let selectedDurationHours = 1;
+
+      function getDefaultProfile() {
+        return {
+          usdt_balance: 0,
+          total_mined: 0,
+          completed_cycles: 0,
+          cycle_start_time: null, // ISO string o null si está inactivo
+          cycle_duration_hours: 1,
+          upgrades: {
+            optimism_node: 0,
+            antminer_s21: 0,
+            immersion_cooling: 0,
+            direct_usdt_pool: 0
+          },
+          default_network: 'OPTIMISM',
+          default_wallet: '',
+          withdrawals: []
+        };
+      }
+
+      let profile = loadLocalProfile();
+
+      // =========================================================================
+      // 4. PERSISTENCIA LOCAL Y SINCRONIZACIÓN CON SUPABASE
+      // =========================================================================
+      function loadLocalProfile() {
+        try {
+          const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (!raw) return getDefaultProfile();
+          const parsed = JSON.parse(raw);
+          const base = getDefaultProfile();
+          return {
+            ...base,
+            ...parsed,
+            upgrades: { ...base.upgrades, ...(parsed.upgrades || {}) },
+            withdrawals: Array.isArray(parsed.withdrawals) ? parsed.withdrawals : []
+          };
+        } catch (e) {
+          return getDefaultProfile();
+        }
+      }
+
+      function saveLocalProfile() {
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+        } catch (e) {
+          // Ignorar errores de cuota
+        }
+      }
+
+      async function syncProfileToCloud() {
+        saveLocalProfile();
+        if (!supabaseClient || !currentUser) return;
+
+        setSyncLabel('Sincronizando...');
+        const payload = {
+          user_id: currentUser.id,
+          email: currentUser.email,
+          usdt_balance: Number(profile.usdt_balance.toFixed(6)),
+          total_mined: Number(profile.total_mined.toFixed(6)),
+          completed_cycles: profile.completed_cycles,
+          cycle_start_time: profile.cycle_start_time,
+          cycle_duration_hours: profile.cycle_duration_hours,
+          upgrades: profile.upgrades,
+          default_network: profile.default_network,
+          default_wallet: profile.default_wallet,
+          updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabaseClient
+          .from('miner_profiles')
+          .upsert(payload, { onConflict: 'user_id' });
+
+        if (error) {
+          console.error('Error sincronizando perfil:', error.message);
+          setSyncLabel('Error sync');
+        } else {
+          setSyncLabel('Nube OK ✓');
+        }
+      }
+
+      async function loadCloudProfile(user) {
+        if (!supabaseClient || !user) return;
+        setSyncLabel('Cargando nube...');
+
+        // 1. Obtener perfil de minería
+        const { data: row, error } = await supabaseClient
+          .from('miner_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          showToast('No se pudo leer miner_profiles. Revisá el SQL en Supabase.', 'error');
+          setSyncLabel('Error tabla');
+          return;
+        }
+
+        if (row) {
+          const base = getDefaultProfile();
+          profile = {
+            ...base,
+            usdt_balance: Number(row.usdt_balance) || 0,
+            total_mined: Number(row.total_mined) || 0,
+            completed_cycles: Number(row.completed_cycles) || 0,
+            cycle_start_time: row.cycle_start_time || null,
+            cycle_duration_hours: Number(row.cycle_duration_hours) || 1,
+            upgrades: { ...base.upgrades, ...(row.upgrades || {}) },
+            default_network: row.default_network || 'OPTIMISM',
+            default_wallet: row.default_wallet || '',
+            withdrawals: []
+          };
+          selectedDurationHours = profile.cycle_duration_hours || 1;
+        } else {
+          // Primer inicio de sesión: crear registro inicial en Supabase
+          await syncProfileToCloud();
+        }
+
+        // 2. Obtener historial de retiros
+        const { data: wRows } = await supabaseClient
+          .from('withdrawals')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(25);
+
+        if (Array.isArray(wRows)) {
+          profile.withdrawals = wRows.map(w => ({
+            id: w.id,
+            network: w.network,
+            wallet_address: w.wallet_address,
+            amount_usdt: Number(w.amount_usdt),
+            status: w.status,
+            created_at: w.created_at
+          }));
+        }
+
+        saveLocalProfile();
+        setSyncLabel('Nube OK ✓');
+        applySavedWalletPreferences();
+        renderAll();
+      }
+
+      // =========================================================================
+      // 5. CÁLCULOS DE RENDIMIENTO Y ESTADO DEL TEMPORIZADOR REAL
+      // =========================================================================
+      function getHourlyRateUsdt() {
+        let bonus = 0;
+        for (const item of RIG_UPGRADES) {
+          const lvl = profile.upgrades[item.id] || 0;
+          bonus += lvl * item.hourlyBoost;
+        }
+        return BASE_USDT_PER_HOUR + bonus;
+      }
+
+      function getTotalHashrateTh() {
+        let th = 10.0;
+        for (const item of RIG_UPGRADES) {
+          const lvl = profile.upgrades[item.id] || 0;
+          th += lvl * item.hashrateBoost;
+        }
+        return th;
+      }
+
+      function getUpgradeCost(item) {
+        const lvl = profile.upgrades[item.id] || 0;
+        return Number((item.baseCost * Math.pow(item.costFactor, lvl)).toFixed(4));
+      }
+
+      function calculateCycleReward(hours) {
+        const cfg = DURATION_CONFIG[hours] || DURATION_CONFIG[1];
+        return getHourlyRateUsdt() * hours * cfg.bonusMultiplier;
+      }
+
+      /**
+       * Evalúa el estado exacto del ciclo contra el reloj real (Date.now()):
+       * - 'IDLE': no hay ciclo activo
+       * - 'MINING': ciclo corriendo (devuelve segundos restantes y progreso %)
+       * - 'READY': ciclo finalizado listo para reclamar
+       */
+      function getCycleRuntimeState() {
+        if (!profile.cycle_start_time) {
+          return { status: 'IDLE', remainingSec: selectedDurationHours * 3600, progressPct: 0 };
+        }
+
+        const startMs = new Date(profile.cycle_start_time).getTime();
+        const durationHours = profile.cycle_duration_hours || 1;
+        const totalMs = durationHours * 3600 * 1000;
+        const elapsedMs = Math.max(0, Date.now() - startMs);
+
+        if (elapsedMs >= totalMs) {
+          return { status: 'READY', remainingSec: 0, progressPct: 100 };
+        }
+
+        const remainingSec = Math.ceil((totalMs - elapsedMs) / 1000);
+        const progressPct = Math.min(99.9, (elapsedMs / totalMs) * 100);
+        return { status: 'MINING', remainingSec, progressPct };
+      }
+
+      function formatCountdown(totalSeconds) {
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        return [hrs, mins, secs].map(v => String(v).padStart(2, '0')).join(':');
+      }
+
+      function formatUsdt(val) {
+        return Number(val || 0).toFixed(4);
+      }
+
+      // =========================================================================
+      // 6. ACCIONES DE MINADO (UN SOLO CLIC POR CICLO)
+      // =========================================================================
+      async function handleMainCycleAction() {
+        const runtime = getCycleRuntimeState();
+
+        // Caso A: Iniciar nuevo ciclo (1h, 2h u 8h)
+        if (runtime.status === 'IDLE') {
+          profile.cycle_start_time = new Date().toISOString();
+          profile.cycle_duration_hours = selectedDurationHours;
+          showToast(`Ciclo de ${selectedDurationHours}h iniciado. Volvé al finalizar para reclamar.`, 'info');
+          renderAll();
+          await syncProfileToCloud();
+          return;
+        }
+
+        // Caso B: Ciclo aún en progreso (bloqueado contra clics repetidos / autoclickers)
+        if (runtime.status === 'MINING') {
+          showToast(`Ciclo en curso. Faltan ${formatCountdown(runtime.remainingSec)}.`, 'warning');
+          return;
+        }
+
+        // Caso C: Ciclo terminado -> Reclamar recompensa USDT
+        if (runtime.status === 'READY') {
+          const duration = profile.cycle_duration_hours || 1;
+          const reward = calculateCycleReward(duration);
+
+          profile.usdt_balance = Number((profile.usdt_balance + reward).toFixed(6));
+          profile.total_mined = Number((profile.total_mined + reward).toFixed(6));
+          profile.completed_cycles += 1;
+          profile.cycle_start_time = null;
+
+          showToast(`¡Recompensa reclamada! +${formatUsdt(reward)} USDT`, 'success');
+          renderAll();
+          await syncProfileToCloud();
+        }
+      }
+
+      // =========================================================================
+      // 7. COMPRA DE MEJORAS DE RIG
+      // =========================================================================
+      async function buyRigUpgrade(upgradeId) {
+        const item = RIG_UPGRADES.find(u => u.id === upgradeId);
+        if (!item) return;
+
+        const cost = getUpgradeCost(item);
+        if (profile.usdt_balance < cost) {
+          showToast('Saldo USDT insuficiente para esta mejora.', 'error');
+          return;
+        }
+
+        profile.usdt_balance = Number((profile.usdt_balance - cost).toFixed(6));
+        profile.upgrades[item.id] = (profile.upgrades[item.id] || 0) + 1;
+
+        showToast(`Instalado: ${item.name} (Nv. ${profile.upgrades[item.id]})`, 'success');
+        renderAll();
+        await syncProfileToCloud();
+      }
+
+      // =========================================================================
+      // 8. RETIROS A LEMON (USDT)
+      // =========================================================================
+      function updateNetworkHint() {
+        const net = document.getElementById('networkSelect').value;
+        const cfg = NETWORK_CONFIG[net] || NETWORK_CONFIG.OPTIMISM;
+        document.getElementById('networkHintText').textContent = cfg.hint;
+        document.getElementById('lemonAddressInput').placeholder =
+          net === 'TRC20' ? 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE' : '0x71C7656EC7ab88b098defB751B7401B5f6d8976F';
+      }
+
+      function applySavedWalletPreferences() {
+        if (profile.default_network && NETWORK_CONFIG[profile.default_network]) {
+          document.getElementById('networkSelect').value = profile.default_network;
+        }
+        if (profile.default_wallet) {
+          document.getElementById('lemonAddressInput').value = profile.default_wallet;
+        }
+        updateNetworkHint();
+      }
+
+      async function saveDefaultLemonWallet() {
+        const net = document.getElementById('networkSelect').value;
+        const address = document.getElementById('lemonAddressInput').value.trim();
+        const cfg = NETWORK_CONFIG[net];
+
+        if (!address || !cfg.regex.test(address)) {
+          showToast(`Dirección inválida para ${cfg.name}. Revisá el formato.`, 'error');
+          return;
+        }
+
+        profile.default_network = net;
+        profile.default_wallet = address;
+        showToast('Dirección de Lemon guardada como predeterminada.', 'success');
+        await syncProfileToCloud();
+      }
+
+      async function handleLemonWithdrawSubmit(e) {
+        e.preventDefault();
+        const net = document.getElementById('networkSelect').value;
+        const cfg = NETWORK_CONFIG[net];
+        const address = document.getElementById('lemonAddressInput').value.trim();
+        const amount = Number(document.getElementById('withdrawUsdtInput').value);
+
+        if (!address || !cfg.regex.test(address)) {
+          showToast(`Ingresá una dirección válida de Lemon para ${cfg.name}.`, 'error');
+          return;
+        }
+
+        if (isNaN(amount) || amount < MIN_WITHDRAW_USDT) {
+          showToast(`El monto mínimo de retiro es ${MIN_WITHDRAW_USDT.toFixed(4)} USDT.`, 'warning');
+          return;
+        }
+
+        if (amount > profile.usdt_balance) {
+          showToast('No tenés suficiente saldo USDT disponible.', 'error');
+          return;
+        }
+
+        // Descontar saldo y guardar dirección por comodidad
+        profile.usdt_balance = Number((profile.usdt_balance - amount).toFixed(6));
+        profile.default_network = net;
+        profile.default_wallet = address;
+
+        const newRecord = {
+          id: 'WD-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+          network: net,
+          wallet_address: address,
+          amount_usdt: Number(amount.toFixed(4)),
+          status: 'Pendiente de envío',
+          created_at: new Date().toISOString()
+        };
+
+        // Guardar en tabla withdrawals de Supabase si está conectado
+        if (supabaseClient && currentUser) {
+          const { data, error } = await supabaseClient
+            .from('withdrawals')
+            .insert({
+              user_id: currentUser.id,
+              network: newRecord.network,
+              wallet_address: newRecord.wallet_address,
+              amount_usdt: newRecord.amount_usdt,
+              status: newRecord.status
+            })
+            .select()
+            .single();
+
+          if (!error && data) {
+            newRecord.id = data.id;
+            newRecord.created_at = data.created_at;
+          }
+        }
+
+        profile.withdrawals.unshift(newRecord);
+        document.getElementById('withdrawUsdtInput').value = '';
+
+        showToast(`Solicitud registrada: ${formatUsdt(amount)} USDT (${cfg.name})`, 'success');
+        renderAll();
+        await syncProfileToCloud();
+      }
+
+      // =========================================================================
+      // 9. AUTENTICACIÓN CON GOOGLE (SUPABASE OAUTH)
+      // =========================================================================
+      async function signInWithGoogle() {
+        if (!supabaseClient) {
+          showToast('Pegá primero tu SUPABASE_URL y SUPABASE_ANON_KEY en el código.', 'warning');
+          document.getElementById('sqlModal').classList.remove('hidden');
+          return;
+        }
+
+        const { error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin + window.location.pathname
+          }
+        });
+
+        if (error) {
+          showToast('Error al iniciar sesión con Google: ' + error.message, 'error');
+        }
+      }
+
+      async function signOutGoogle() {
+        if (supabaseClient) {
+          await supabaseClient.auth.signOut();
+        }
+        currentUser = null;
+        updateAuthUI();
+        showToast('Sesión cerrada.', 'info');
+      }
+
+      function updateAuthUI() {
+        const badge = document.getElementById('connectionModeBadge');
+        const banner = document.getElementById('demoModeBanner');
+        const loginBtn = document.getElementById('googleLoginBtn');
+        const profileBox = document.getElementById('userProfileBox');
+
+        if (!isSupabaseConfigured) {
+          badge.textContent = 'Modo Local';
+          badge.className = 'text-[10px] font-mono-tech uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30';
+          banner.classList.remove('hidden');
+          setSyncLabel('Local');
+          return;
+        }
+
+        banner.classList.add('hidden');
+
+        if (currentUser) {
+          badge.textContent = 'Cloud Sync';
+          badge.className = 'text-[10px] font-mono-tech uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+          loginBtn.classList.add('hidden');
+          profileBox.classList.remove('hidden');
+          profileBox.classList.add('flex');
+
+          document.getElementById('userEmailText').textContent = currentUser.email || 'Cuenta Google';
+          const avatarUrl = currentUser.user_metadata?.avatar_url;
+          if (avatarUrl) {
+            document.getElementById('userAvatarImg').src = avatarUrl;
+          }
+        } else {
+          badge.textContent = 'Supabase Listo';
+          badge.className = 'text-[10px] font-mono-tech uppercase px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30';
+          loginBtn.classList.remove('hidden');
+          profileBox.classList.add('hidden');
+          profileBox.classList.remove('flex');
+          setSyncLabel('Sin sesión');
+        }
+      }
+
+      function setSyncLabel(text) {
+        const el = document.getElementById('syncStatusLabel');
+        if (el) el.textContent = text;
+      }
+
+      // =========================================================================
+      // 10. RENDERIZADO DE TODA LA INTERFAZ
+      // =========================================================================
+      function renderStatsAndCycle() {
+        const hourlyRate = getHourlyRateUsdt();
+        const hashrate = getTotalHashrateTh();
+        const runtime = getCycleRuntimeState();
+
+        // Tarjetas superiores
+        document.getElementById('statUsdtBalance').textContent = `${formatUsdt(profile.usdt_balance)} USDT`;
+        const estSats = Math.round(profile.usdt_balance * USDT_TO_SATS_ESTIMATE);
+        document.getElementById('statSatsEquiv').textContent = estSats.toLocaleString('es-AR');
+
+        document.getElementById('statHourlyRate').textContent = `${formatUsdt(hourlyRate)} /h`;
+        document.getElementById('statHashrate').textContent = `${hashrate.toFixed(1)} TH/s`;
+
+        document.getElementById('statTotalMined').textContent = `${formatUsdt(profile.total_mined)} USDT`;
+        document.getElementById('statCompletedCycles').textContent = profile.completed_cycles;
+
+        const activeHours = runtime.status === 'IDLE' ? selectedDurationHours : (profile.cycle_duration_hours || 1);
+        const cfg = DURATION_CONFIG[activeHours] || DURATION_CONFIG[1];
+        const expectedReward = calculateCycleReward(activeHours);
+
+        document.getElementById('statCycleReward').textContent = `+${formatUsdt(expectedReward)} USDT`;
+        document.getElementById('statCycleBonusLabel').textContent = cfg.bonusText;
+
+        // Actualizar selector de duración (1h, 2h, 8h)
+        document.querySelectorAll('.duration-option-btn').forEach(btn => {
+          const hrs = Number(btn.getAttribute('data-hours'));
+          const isSelected = hrs === activeHours;
+          btn.disabled = runtime.status !== 'IDLE';
+
+          if (isSelected) {
+            btn.className = 'duration-option-btn rounded-2xl p-2.5 border text-center transition bg-cyan-500/15 border-cyan-400 text-white shadow-sm shadow-cyan-500/10';
+          } else {
+            btn.className = `duration-option-btn rounded-2xl p-2.5 border text-center transition bg-slate-950/80 border-slate-800 text-slate-400 ${
+              runtime.status === 'IDLE' ? 'hover:border-slate-700 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+            }`;
+          }
+        });
+
+        // Actualizar núcleo visual de minado
+        const coreBtn = document.getElementById('mainCycleBtn');
+        const coreIcon = document.getElementById('coreIcon');
+        const corePrimary = document.getElementById('corePrimaryText');
+        const coreTimer = document.getElementById('coreTimerText');
+        const coreSub = document.getElementById('coreSubText');
+        const ring = document.getElementById('cycleProgressRing');
+        const orbit = document.getElementById('orbitRing');
+        const dot = document.getElementById('nodePulseDot');
+        const nodeText = document.getElementById('nodeStatusText');
+        const cycleBadge = document.getElementById('statCycleBadge');
+
+        const circumference = 339.292;
+        const offset = circumference - (runtime.progressPct / 100) * circumference;
+        ring.style.strokeDashoffset = offset.toFixed(2);
+
+        document.getElementById('cycleLinearBar').style.width = `${runtime.progressPct.toFixed(1)}%`;
+        document.getElementById('cyclePercentText').textContent = `${runtime.progressPct.toFixed(1)}%`;
+
+        if (runtime.status === 'IDLE') {
+          coreBtn.className = 'cycle-core state-idle relative w-44 h-44 sm:w-52 sm:h-52 rounded-full flex flex-col items-center justify-center p-4 text-center focus:outline-none cursor-pointer';
+          orbit.classList.remove('orbit-active');
+          ring.setAttribute('stroke', '#22d3ee');
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+          nodeText.textContent = 'NODO EN ESPERA';
+          cycleBadge.textContent = 'Inactivo';
+          cycleBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300';
+
+          coreIcon.textContent = '⚡';
+          corePrimary.textContent = 'INICIAR CICLO DE MINADO';
+          coreTimer.textContent = formatCountdown(selectedDurationHours * 3600);
+          coreTimer.className = 'font-mono-tech text-lg sm:text-xl font-extrabold text-cyan-300 mt-1';
+          coreSub.textContent = `Est. +${formatUsdt(expectedReward)} USDT`;
+          document.getElementById('cycleProgressLabel').textContent = `Ciclo seleccionado: ${cfg.label}`;
+        } else if (runtime.status === 'MINING') {
+          coreBtn.className = 'cycle-core state-mining relative w-44 h-44 sm:w-52 sm:h-52 rounded-full flex flex-col items-center justify-center p-4 text-center focus:outline-none cursor-default';
+          orbit.classList.add('orbit-active');
+          ring.setAttribute('stroke', '#10b981');
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping';
+          nodeText.textContent = `MINANDO (${activeHours}H)`;
+          cycleBadge.textContent = `Activo ${activeHours}h`;
+          cycleBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+
+          coreIcon.textContent = '⛏️';
+          corePrimary.textContent = 'MINANDO EN LA NUBE...';
+          coreTimer.textContent = formatCountdown(runtime.remainingSec);
+          coreTimer.className = 'font-mono-tech text-xl sm:text-2xl font-extrabold text-emerald-300 mt-1';
+          coreSub.textContent = `Recompensa: +${formatUsdt(expectedReward)} USDT`;
+          document.getElementById('cycleProgressLabel').textContent = 'Bloqueado hasta completar ciclo';
+        } else {
+          coreBtn.className = 'cycle-core state-claimable relative w-44 h-44 sm:w-52 sm:h-52 rounded-full flex flex-col items-center justify-center p-4 text-center focus:outline-none cursor-pointer';
+          orbit.classList.remove('orbit-active');
+          ring.setAttribute('stroke', '#fbbf24');
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+          nodeText.textContent = 'CICLO COMPLETADO';
+          cycleBadge.textContent = '¡Listo!';
+          cycleBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+
+          coreIcon.textContent = '🎁';
+          corePrimary.textContent = 'RECLAMAR RECOMPENSA USDT';
+          coreTimer.textContent = `+${formatUsdt(expectedReward)}`;
+          coreTimer.className = 'font-mono-tech text-xl sm:text-2xl font-extrabold text-amber-300 mt-1';
+          coreSub.textContent = 'Tocá para acreditar en saldo';
+          document.getElementById('cycleProgressLabel').textContent = '¡Ciclo finalizado con éxito!';
+        }
+      }
+
+      function renderRigUpgrades() {
+        const container = document.getElementById('rigUpgradesContainer');
+        container.innerHTML = RIG_UPGRADES.map(item => {
+          const lvl = profile.upgrades[item.id] || 0;
+          const cost = getUpgradeCost(item);
+          const canAfford = profile.usdt_balance >= cost;
+
+          return `
+            <div class="rounded-2xl bg-slate-950/80 border ${canAfford ? 'border-slate-700 hover:border-cyan-500/40' : 'border-slate-800/70 opacity-85'} p-3.5 flex items-center justify-between gap-3 transition">
+              <div class="flex items-start gap-3 min-w-0">
+                <div class="w-11 h-11 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-xl shrink-0">
+                  ${item.icon}
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h3 class="font-bold text-sm text-white truncate">${item.name}</h3>
+                    <span class="font-mono-tech text-[11px] px-2 py-0.5 rounded bg-slate-900 text-cyan-300 border border-slate-800">
+                      Nv. ${lvl}
+                    </span>
+                    <span class="font-mono-tech text-[11px] text-emerald-400 font-semibold">
+                      +${item.hourlyBoost.toFixed(3)} USDT/h
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-400 mt-0.5">${item.description}</p>
+                </div>
+              </div>
+
+              <button type="button" data-upgrade-id="${item.id}" ${canAfford ? '' : 'disabled'}
+                class="buy-rig-btn shrink-0 px-3.5 py-2.5 rounded-xl font-mono-tech text-xs font-extrabold transition flex flex-col items-end ${
+                  canAfford
+                    ? 'bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-slate-950 shadow-md shadow-emerald-500/15 active:scale-95 cursor-pointer'
+                    : 'bg-slate-900 text-slate-500 border border-slate-800 cursor-not-allowed'
+                }">
+                <span>Mejorar</span>
+                <span class="text-[11px]">${formatUsdt(cost)} USDT</span>
+              </button>
+            </div>
+          `;
+        }).join('');
+
+        container.querySelectorAll('.buy-rig-btn').forEach(btn => {
+          btn.addEventListener('click', () => buyRigUpgrade(btn.getAttribute('data-upgrade-id')));
+        });
+      }
+
+      function renderLemonWithdrawHistory() {
+        const list = document.getElementById('lemonHistoryList');
+        const countEl = document.getElementById('withdrawHistoryCount');
+        const items = profile.withdrawals || [];
+        countEl.textContent = `${items.length} registros`;
+
+        if (items.length === 0) {
+          list.innerHTML = `
+            <div class="text-xs text-slate-500 text-center py-4 rounded-xl bg-slate-950/50 border border-slate-800/70">
+              Aún no tenés solicitudes de retiro registradas.
+            </div>
+          `;
+          return;
+        }
+
+        list.innerHTML = items.map((w, idx) => {
+          const shortAddr = w.wallet_address.length > 20
+            ? `${w.wallet_address.slice(0, 8)}...${w.wallet_address.slice(-6)}`
+            : w.wallet_address;
+          const dateLabel = w.created_at
+            ? new Date(w.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+            : '';
+
+          return `
+            <div class="rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2.5 flex items-center justify-between gap-2 text-xs">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono-tech font-bold text-emerald-300">${formatUsdt(w.amount_usdt)} USDT</span>
+                  <span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-mono-tech text-cyan-300">
+                    ${w.network}
+                  </span>
+                </div>
+                <div class="font-mono-tech text-[11px] text-slate-400 truncate mt-0.5">
+                  ${shortAddr} • ${dateLabel}
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-semibold">
+                  ${w.status}
+                </span>
+                <button type="button" data-copy-idx="${idx}" title="Copiar datos de envío"
+                  class="copy-wd-btn px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono-tech text-[11px] border border-slate-700">
+                  Copiar
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        list.querySelectorAll('.copy-wd-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const w = items[Number(btn.getAttribute('data-copy-idx'))];
+            if (!w) return;
+            const summary = `Red: ${w.network} | Dirección Lemon: ${w.wallet_address} | Monto: ${formatUsdt(w.amount_usdt)} USDT`;
+            copyTextToClipboard(summary, 'Datos de envío copiados al portapapeles.');
+          });
+        });
+      }
+
+      function renderAll() {
+        renderStatsAndCycle();
+        renderRigUpgrades();
+        renderLemonWithdrawHistory();
+      }
+
+      // =========================================================================
+      // 11. UTILIDADES UI (TOASTS Y PORTAPAPELES SEGURO)
+      // =========================================================================
+      function showToast(message, tone = 'info') {
+        const container = document.getElementById('toastContainer');
+        const el = document.createElement('div');
+        const styles = {
+          info: 'bg-slate-900/95 border-cyan-500/45 text-cyan-200',
+          success: 'bg-slate-900/95 border-emerald-500/50 text-emerald-200',
+          warning: 'bg-slate-900/95 border-amber-500/50 text-amber-200',
+          error: 'bg-slate-900/95 border-rose-500/50 text-rose-200'
+        };
+        el.className = `pointer-events-auto rounded-xl border px-3.5 py-2.5 text-xs font-medium shadow-xl backdrop-blur-md transition-all duration-300 ${styles[tone] || styles.info}`;
+        el.textContent = message;
+        container.appendChild(el);
+
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(6px)';
+          setTimeout(() => el.remove(), 300);
+        }, 3000);
+      }
+
+      function copyTextToClipboard(text, successMsg) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          showToast(successMsg, 'success');
+        } catch (err) {
+          showToast('No se pudo copiar automáticamente.', 'error');
+        }
+        document.body.removeChild(textarea);
+      }
+
+      // =========================================================================
+      // 12. EVENTOS E INICIALIZACIÓN
+      // =========================================================================
+      async function initApp() {
+        applySavedWalletPreferences();
+        updateAuthUI();
+        renderAll();
+
+        // Selector de duración (1h, 2h, 8h)
+        document.querySelectorAll('.duration-option-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (getCycleRuntimeState().status !== 'IDLE') return;
+            selectedDurationHours = Number(btn.getAttribute('data-hours'));
+            renderStatsAndCycle();
+          });
+        });
+
+        // Botón central único de ciclo
+        document.getElementById('mainCycleBtn').addEventListener('click', handleMainCycleAction);
+
+        // Pestañas Rig vs Lemon
+        const tabRigBtn = document.getElementById('tabRigBtn');
+        const tabLemonBtn = document.getElementById('tabLemonBtn');
+        const panelRig = document.getElementById('panelRig');
+        const panelLemon = document.getElementById('panelLemon');
+
+        tabRigBtn.addEventListener('click', () => {
+          panelRig.classList.remove('hidden');
+          panelLemon.classList.add('hidden');
+          panelLemon.classList.remove('flex');
+          tabRigBtn.className = 'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+          tabLemonBtn.className = 'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent';
+        });
+
+        tabLemonBtn.addEventListener('click', () => {
+          panelRig.classList.add('hidden');
+          panelLemon.classList.remove('hidden');
+          panelLemon.classList.add('flex');
+          tabLemonBtn.className = 'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+          tabRigBtn.className = 'py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent';
+          renderLemonWithdrawHistory();
+        });
+
+        // Formulario Lemon
+        document.getElementById('networkSelect').addEventListener('change', updateNetworkHint);
+        document.getElementById('saveDefaultWalletBtn').addEventListener('click', saveDefaultLemonWallet);
+        document.getElementById('maxUsdtBtn').addEventListener('click', () => {
+          document.getElementById('withdrawUsdtInput').value = formatUsdt(profile.usdt_balance);
+        });
+        document.getElementById('lemonWithdrawForm').addEventListener('submit', handleLemonWithdrawSubmit);
+
+        // Google Auth
+        document.getElementById('googleLoginBtn').addEventListener('click', signInWithGoogle);
+        document.getElementById('logoutBtn').addEventListener('click', signOutGoogle);
+
+        // Modal Guía SQL Supabase
+        const sqlModal = document.getElementById('sqlModal');
+        document.getElementById('openSqlModalBtn').addEventListener('click', () => sqlModal.classList.remove('hidden'));
+        document.getElementById('bannerOpenSqlBtn').addEventListener('click', () => sqlModal.classList.remove('hidden'));
+        document.getElementById('closeSqlModalBtn').addEventListener('click', () => sqlModal.classList.add('hidden'));
+        document.getElementById('copySqlBtn').addEventListener('click', () => {
+          const sqlText = document.getElementById('sqlCodeBlock').textContent;
+          copyTextToClipboard(sqlText, 'Código SQL copiado. Pegalo en el SQL Editor de Supabase.');
+        });
+
+        // Suscripción a cambios de sesión en Supabase
+        if (supabaseClient) {
+          const { data } = await supabaseClient.auth.getSession();
+          if (data?.session?.user) {
+            currentUser = data.session.user;
+            updateAuthUI();
+            await loadCloudProfile(currentUser);
+          }
+
+          supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            currentUser = session?.user || null;
+            updateAuthUI();
+            if (currentUser && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+              await loadCloudProfile(currentUser);
+            }
+          });
+        }
+
+        // Actualización del reloj en vivo cada 1 segundo
+        setInterval(() => {
+          renderStatsAndCycle();
+        }, 1000);
+      }
+
+      window.addEventListener('DOMContentLoaded', initApp);
+    })();
+  </script>
+</body>
+</html>
